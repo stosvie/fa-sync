@@ -87,7 +87,7 @@ class FlickrToDb:
 
     def __init__(self, userid, apikey, secret ):
         self._userid = userid
-        self._apikey = api_key
+        self._apikey = apikey
         self._secret = secret
         self._flickr = None
         pass
@@ -144,7 +144,7 @@ class FlickrToDb:
         return df
 
     def _parse_col_tree(self, colid, df_cols):
-        col_root = self._flickr.collections.getTree(user_id=myuserid, collection_id=colid)
+        col_root = self._flickr.collections.getTree(user_id=self._userid, collection_id=colid)
         df_cols = df_cols.append(pd.DataFrame(col_root['collections']['collection']))
 
         for col in col_root['collections']['collection']:
@@ -228,6 +228,8 @@ class FlickrToDb:
         return final_outer, popular['domains']['pages'], popular['domains']['page']
 
     def get_photo_stats(self, dt):
+
+        print(f"Retrieving photo stats {dt} (user:{self._userid})")
         popular = self._flickr.stats.getPopularPhotos(date=dt, per_page=100, page=0)
         df_popular = pd.DataFrame(popular['photos']['photo'])
 
@@ -259,6 +261,7 @@ class FlickrToDb:
         return (self._add_common_cols(df_popular, dt), self._add_common_cols(photo_domain_stats, dt) )
 
     def get_totals_stats(self, dt):
+        print(f"Retrieving totals stats {dt} (user:{self._userid})")
         totals = self._flickr.stats.getTotalViews(date=dt)
         df_totals = pd.DataFrame([{'date': dt,
                                    'total': totals['stats']['total']['views'],
@@ -287,10 +290,11 @@ class FlickrToDb:
 
     def get_set_stats(self, dt):
 
-        photosets = self._flickr.photosets.getList(user_id=myuserid, per_page=100, page=1)
+        print(f"Retrieving set stats {dt} (user:{self._userid})")
+        photosets = self._flickr.photosets.getList(user_id=self._userid, per_page=100, page=1)
         df_sets = pd.DataFrame(photosets['photosets']['photoset'])
         while photosets['photosets']['pages'] - photosets['photosets']['page'] > 0:
-            photosets = self._flickr.people.photosetsGetList(user_id=myuserid, per_page=100,
+            photosets = self._flickr.people.photosetsGetList(user_id=self._userid, per_page=100,
                                                         page=photosets['photossets']['page'] + 1)
             df_sets = df_sets.append(pd.DataFrame(photosets['photosets']['photoset']))
 
@@ -319,6 +323,8 @@ class FlickrToDb:
         return self._add_common_cols(df_setstats, dt), self._add_common_cols(sets_domain_stats, dt)
 
     def get_collection_stats(self, dt):
+        
+        print(f"Retrieving collections stats {dt} (user:{self._userid})")
         df_cols = pd.DataFrame()
         df_cols = self._parse_col_tree(0, df_cols)
 
@@ -344,6 +350,7 @@ class FlickrToDb:
 
     def get_stream_stats(self, dt):
 
+        print(f"Retrieving stream stats {dt} (user:{self._userid})")
         stream = self._flickr.stats.getPhotostreamStats(date=dt)
         df_streams = pd.DataFrame([{'date': dt, 'views': stream['stats']['views']}])
 
@@ -357,8 +364,10 @@ class FlickrToDb:
     def get_all_stats(self, dt):
 
         writelst = []
+        print(f"Retrieving stats for date {dt} (user:{self._userid})")
         ### TODO need a decorator to get fine-grained timing
         start = time.time()
+        
         writelst.extend(self.get_photo_stats(dt))
         writelst.extend(self.get_totals_stats(dt))
         writelst.extend(self.get_stream_stats(dt))
@@ -376,24 +385,4 @@ class FlickrToDb:
         for dt in self.get_dates():
             self.get_all_stats(dt[0])
         #ps = self.get_photo_stats(dt[0])
-
-api_key = u'4a69280a31fc96c26e7d218c3a8cf345'
-api_secret = u'a2d9a639fd955497'
-myuserid = u'58051209@N00'
-
-
-try:
-    start = time.time()
-    fo = FlickrToDb(myuserid, api_key, api_secret)
-    fo.init()
-    # new_state = lambda x: 'live' if (x == date.today()) else 'frozen'
-    # print(new_state(datetime.date(2020,2,28)))
-
-    # fo.get_totals_stats('2020-03-01')
-    fo.get_stats_batch()
-    print(f'Time: {time.time() - start}')
-except flickrapi.FlickrError as err:
-    print("Flickr error {}".format(err))
-finally:
-    fo.end()
 
