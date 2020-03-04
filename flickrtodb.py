@@ -19,6 +19,7 @@ from dateutil import parser
 class db:
     engine = None
     connection = None
+    schema = 'fs'
 
     def connect(self, server, dbname, username, pwd):
 
@@ -48,21 +49,17 @@ class db:
                 #print(query)
 
                 ### TODO schema as class property
-                res = self.connection.execute(query, params, schema='fs')
+                res = self.connection.execute(query, params, schema=self.schema)
                 print(f'Delete statements deleted {res.rowcount} rows')
                 print(f'Dataframe {df.name} with {df.shape[0]} rows')
-                df.to_sql(df.name, con=self.engine, if_exists='append', chunksize=1000, schema='fs')
-
-
-                # if dt == date.today():
-                #   new_state = 'live'
-                # else:
-                #   new_state = 'frozen'
+                df.to_sql(df.name, con=self.engine, if_exists='append', chunksize=1000, schema=self.schema)
 
                 new_state = lambda x: 'live' if (dt == date.today()) else 'frozen'
 
-                query = "insert into dbo.stats_status (stats_date,stats_state)\
-                    VALUES ('{}','{}')".format(dt, new_state(dt))
+                #query = "insert into {}.stats_status (stats_date,stats_state)\
+                #    VALUES ('{}','{}')".format(self.schema, dt, new_state(dt))
+                query = f"exec [{self.schema}].[CloseStatLoadForDate] @dt='{dt}'"
+
                 self.connection.execute(query)
                 print(f'Updated status for date {dt} with \'{new_state(dt)}\'')
 
@@ -483,3 +480,17 @@ class FlickrToDb:
         print(f'Time in test proc {time.time() - start}')
         # pd.concat([df2, df_dates], axis=1)
         # df2 = df2.join(df_dates.shape)
+
+    def _test_single_photo(self,photoid):
+        
+        i1 = self._flickr.photos.getInfo(photo_id=photoid, format='parsed-json')
+        
+        
+        dfx = pd.DataFrame(i1['photo'])
+        df_dates = pd.DataFrame()
+
+        ### TODO This code snipet needs to be used in get_photos_stats when flattening the stats sublevel
+        df_dates = df_dates.append(dfx.loc[['lastupdate'], ['id', 'dates']].append(dfx.loc[['posted', 'taken'], ['id', 'dates']]))
+        dlu = df_dates.loc['lastupdate'][1]
+        ts = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.localtime(int(dlu)))
+        return ts
