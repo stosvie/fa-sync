@@ -376,8 +376,11 @@ def get_dates():
         connection.close()
     return results
 
+### TODO  this code needs to be merged with get photo batch to add relevant
+#         photo details and falttening of hierarchies
 def test_photos(fobj, myuserid):
 
+    start = time.time()
     photos = flickr2.people.getPhotos(user_id=myuserid, per_page=100, page=1)
 
     df2 = pd.DataFrame(photos['photos']['photo'])

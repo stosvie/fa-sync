@@ -84,6 +84,7 @@ class FlickrToDb:
     _secret = u''
     _flickr = None
     sqldb = db()
+    _photos_per_batch = 100
 
     def __init__(self, userid, apikey, secret ):
         self._userid = userid
@@ -381,8 +382,104 @@ class FlickrToDb:
         #print('retrieved all stats')
     def get_stats_batch(self):
 
+
         #print(ls)
         for dt in self.get_dates():
             self.get_all_stats(dt[0])
         #ps = self.get_photo_stats(dt[0])
 
+    ### TODO this needs to be sorted
+    #        1) add groups and more 
+    #        2) all sub details need to recurs for all pages, unlikely but possible
+    #        3) update should get photo details and list only those that have 
+    #           a newer last updated date
+    def _get_photo_batch(self, page_to_get):
+
+        start = time.time()
+        
+        photos = self._flickr.people.getPhotos(user_id=self._userid, page=page_to_get)
+        
+        cur_page = photos['photos']['page']
+        tot_pages = photos['photos']['pages']
+
+        df2 = pd.DataFrame(photos['photos']['photo'])
+
+        # calldb(df2,'photo_details')
+        print(f'photo details has  {df2.shape[0]} rows.')
+        
+        df_allfaves = pd.DataFrame()
+        df_alltags = pd.DataFrame()
+        for f in photos['photos']['photo']:
+                photoid = f['id']
+                phototitle = f['title']
+
+                faves =  self._flickr.photos.getFavorites(photo_id=f['id'], per_page=50)
+
+                df_faves = pd.DataFrame(faves['photo']['person'])
+                id_list = [photoid for i in range(df_faves.index.size)]
+                df_faves['photo_id'] = id_list
+                df_allfaves = df_allfaves.append(df_faves)
+                
+                # calldb(df_faves, 'photo_faves')
+                #countfaves = faves['photo']['total']
+
+                i1 = self._flickr.photos.getInfo(photo_id=photoid, format='parsed-json')
+                df_tags = pd.DataFrame(i1['photo']['tags']['tag'])
+                #photoids = ['photoid'] * range(df_tags.index.size)
+                photoids = [photoid for i in range(df_tags.index.size)]
+                df_tags['photo_id'] = photoids
+                df_alltags = df_alltags.append(df_tags)
+                #calldb(df_tags, 'photo_tags')
+        
+        print(f'faves has {df_allfaves.shape[0]} rows.')
+        print(f'tags has {df_alltags.shape[0]} rows.')
+                
+        print(f"Done with batch for page { cur_page } of { tot_pages }.")
+        print(f'Time gathering details for page: {cur_page}, {time.time() - start}')
+        time.sleep(1)
+        return cur_page,tot_pages
+
+    def get_user_photos(self):
+        r = self._get_photo_batch(1)
+        while r[0] < r[1]:
+            r = self._get_photo_batch(r[0] + 1)
+
+        print('Done.')
+
+    def _test_photos(self):
+        start = time.time()
+        photos = self._flickr.people.getPhotos(user_id=self._userid, per_page=100, page=1)
+
+        df2 = pd.DataFrame(photos['photos']['photo'])
+        df_dates = pd.DataFrame()
+        df_url = pd.DataFrame()
+        for f in photos['photos']['photo']:
+            photoid = f['id']
+            phototitle = f['title']
+
+            i1 = self._flickr.photos.getInfo(photo_id=photoid, format='parsed-json')
+            df_tags = pd.DataFrame(i1['photo']['tags']['tag'])
+            #photoids = ['photoid'] * range(df_tags.index.size)
+            photoids = [photoid for i in range(df_tags.index.size)]
+            df_tags['photo_id'] = photoids
+
+            # df_dates = pd.DataFrame(i1['photo'])['dates'] # ['posted']
+            # pd.DataFrame(i1[('id','photo')])['dates']  # ['posted']
+            dfx = pd.DataFrame(i1['photo'])
+            ### TODO This code snipet needs to be used in get_photos_stats when flattening the stats sublevel
+            df_dates = df_dates.append(dfx.loc[['lastupdate'], ['id', 'dates']].append(dfx.loc[['posted', 'taken'], ['id', 'dates']]))
+            # df_alldates = df_alldates.append(df_dates)
+            # df_url = pd.DataFrame(i1['photo'])['urls']['url']
+            df_url = df_url.append(pd.DataFrame(pd.DataFrame(i1['photo'])['urls']['url']))
+            # df_allurls = df_allurls.append(df_url)
+
+            #df_dates = df_dates.append(pd.DataFrame.from_dict(i1['photo']['dates'], orient="index").T)
+            #df_dates['photoid'] = theid
+            #df_dates = normalize(i1['photo'],['dates'])
+            #df_comments = pd.DataFrame(i1['photo']['comments'])
+            #df_comments = df_comments.append(pd.DataFrame.from_dict(i1['photo']['comments'], orient="index").T)
+
+        print(df_dates.shape)
+        print(f'Time in test proc {time.time() - start}')
+        # pd.concat([df2, df_dates], axis=1)
+        # df2 = df2.join(df_dates.shape)

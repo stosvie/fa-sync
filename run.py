@@ -14,7 +14,9 @@ try:
     fo.init()
 
     # fo.get_totals_stats('2020-03-01')
-    fo.get_stats_batch()
+    # fo.get_stats_batch()
+    # fo.get_user_photos()
+    fo._test_photos()
     print(f'Time: {time.time() - start}')
 except fapi.FlickrError as err:
     print("Flickr error {}".format(err))
