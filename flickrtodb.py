@@ -10,6 +10,7 @@ import flickrapi
 import pandas as pd
 # import numpy as np
 import sqlalchemy as sa
+import pyodbc
 # from sqlalchemy.orm import sessionmaker
 # from sqlalchemy.sql import text
 import webbrowser
