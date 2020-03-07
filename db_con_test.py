@@ -1,5 +1,5 @@
 import sqlalchemy as sa
-import pyodbc
+# import pyodbc
 
 import pymssql as mssql
 from urllib import parse
