@@ -17,6 +17,19 @@ class DbTest:
         self.connection = None
 
 
+
+    def connect3(self, server, dbname, username, pwd):
+        params = parse.quote_plus(
+        "DRIVER={ODBC Driver 17 for SQL Server};"
+        "SERVER="+server+";"
+        "DATABASE="+dbname+";"
+        "UID="+username+";"
+        "PWD="+pwd+""
+            )
+        self.engine = sa.create_engine("mssql+pyodbc:///?odbc_connect={}".format(params))
+        self.connection = self.engine.connect()
+
+
     def connect2(self, server, dbname, username, pwd):
 
         connecting_string = 'DRIVER={SQL Server};Server=%s;Database=%s;UID=%s;PWD=%s;TDS_Version=8.0;Port=1433;'
@@ -76,6 +89,6 @@ host='srdjans.sg-host.com'
 db ='dberhjrc79rrxj'
 user='uejdurd87jk8d'
 pwd='$#3&I[j1bvA2'
-sqldb.connect2('tcp:woo.database.windows.net,1433', 'BYWS', 'boss', 's7#3QzOsB$J*^v3')
+sqldb.connect3('tcp:woo.database.windows.net,1433', 'BYWS', 'boss', 's7#3QzOsB$J*^v3')
 # sqldb.connect_p(host,db,user,pwd)
 sqldb.terminate()
