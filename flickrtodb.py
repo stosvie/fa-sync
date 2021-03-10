@@ -40,46 +40,53 @@ class db:
 
             try:
                 start = time.time()
-                trans = self.connection.begin()
-                ### TODO replace with SP
-                # query = """
-                #        IF OBJECT_ID('fs.{}') IS NOT NULL 
-                #        delete from fs.{} where statdate = CAST( ? AS DATE) AND userid = ?; 
-                #        """.format(df.name, df.name)
-                #params = ( dt, userid)
-                
-                params = (df.name, dt, userid)
-                #query = f"exec [{self.schema}].[DeleteStatsForDate] @objname =?, @dt=?, @usrid =?"
-                query = f"exec [{self.schema}].[DeleteStatsForDate] @objname ='{df.name}', @dt='{dt}', @usrid ='{userid}'"
+                #trans = self.connection.begin()
+                with self.engine.begin() as conn:
+                    
+                    ### TODO replace with SP
+                    # query = """
+                    #        IF OBJECT_ID('fs.{}') IS NOT NULL 
+                    #        delete from fs.{} where statdate = CAST( ? AS DATE) AND userid = ?; 
+                    #        """.format(df.name, df.name)
+                    #params = ( dt, userid)
+                    
+                    params = (df.name, dt, userid)
+                    #query = f"exec [{self.schema}].[DeleteStatsForDate] @objname =?, @dt=?, @usrid =?"
+                    query = f"exec [{self.schema}].[DeleteStatsForDate] @objname ='{df.name}', @dt='{dt}', @usrid ='{userid}'"
 
-                # print(query)
+                    # print(query)
 
-                ### TODO schema as class property
-                #res = self.connection.execute(query, params, schema=self.schema)
-                print(f"Deleting existing records in table '{df.name}' for date '{dt}' (userid '{userid}')")
-                self.connection.execute(query)
-                trans.to_sql()
-                # print(f'Delete statements deleted {res.rowcount} rows')
-                print(f'Dataframe {df.name} with {df.shape[0]} rows')
-                
-                df.to_sql(df.name, con=self.engine, if_exists='append',  schema=self.schema, chunksize=1000)
-                #chunksize=1000, index=False
+                    ### TODO schema as class property
+                    #res = self.connection.execute(query, params, schema=self.schema)
+                    print(f"Deleting existing records in table '{df.name}' for date '{dt}' (userid '{userid}')")
+                    #-> self.connection.execute(query)
+                    conn.execute(query)
+                    
+                    
+                    # print(f'Delete statements deleted {res.rowcount} rows')
+                    print(f'Dataframe {df.name} with {df.shape[0]} rows')
+                    
+                    #->df.to_sql(df.name, con=self.engine, if_exists='append',  schema=self.schema, chunksize=1000)
+                    df.to_sql(df.name, con=conn, if_exists='append',  schema=self.schema, chunksize=1000)
+                    #chunksize=1000, index=False
 
-                new_state = lambda x: 'live' if (dt == date.today()) else 'frozen'
+                    new_state = lambda x: 'live' if (dt == date.today()) else 'frozen'
 
-                #query = "insert into {}.stats_status (stats_date,stats_state)\
-                #    VALUES ('{}','{}')".format(self.schema, dt, new_state(dt))
-                query = f"exec [{self.schema}].[CloseStatLoadForDate] @dt='{dt}'"
+                    #query = "insert into {}.stats_status (stats_date,stats_state)\
+                    #    VALUES ('{}','{}')".format(self.schema, dt, new_state(dt))
+                    query = f"exec [{self.schema}].[CloseStatLoadForDate] @dt='{dt}'"
 
-                self.connection.execute(query)
-                print(f'Updated status for date {dt} with \'{new_state(dt)}\'')
+                    #->self.connection.execute(query)
+                    conn.execute(query)
+                    print(f'Updated status for date {dt} with \'{new_state(dt)}\'')
 
-                trans.commit()
+
+                    #->trans.commit()
 
             except Exception as e:
                 print(f'Exception while writing to DB:{e}')
-                
-                trans.rollback()
+                # conn.rollback()
+                #->trans.rollback()
                 raise
             finally:
                 print(f'Time writing dataframe: {df.name}, {time.time() - start}')

@@ -14,6 +14,41 @@ import flickrapi as fapi
 
 app = Flask(__name__)
 
+def do_manageflickrgroup():
+    api_key = u'4a69280a31fc96c26e7d218c3a8cf345'
+    api_secret = u'a2d9a639fd955497'
+    myuserid = u'58051209@N00'
+    retobj = {}
+
+    fo = f.FlickrToDb(myuserid, api_key, api_secret)
+
+    try:
+        start = time.time()
+        fo.init()
+
+        grpid = fo.get_group("FlickrCentral")
+        
+        print(f'GroupID: {grpid}')
+        if grpid != "":
+            fo.clean_group(grpid, 23)
+
+            print(f'Time: {time.time() - start}')
+            retobj = {  "status": "sucess", 
+                        "grpname" : "FlickrCentral", 
+                        "grpID" : grpid,
+                        "picsRemaining" :  23,
+                        "loadtime" :time.time() - start
+                    }
+            return retobj
+
+
+    except fapi.FlickrError as err:
+        print("Flickr error {}".format(err))
+        retobj = {"status": "error", "errortxt" :err}
+        return retobj
+
+    finally:
+        fo.end()
 
 
 def do_fasync():
@@ -25,14 +60,10 @@ def do_fasync():
     fo = f.FlickrToDb(myuserid, api_key, api_secret)
     try:
         start = time.time()
-
         fo.init()
 
-        # fo.get_totals_stats('2020-03-01')
         fo.get_stats_batch()
-        # fo.get_user_photos()
-        # fo._test_photos()
-        # fo._test_single_photo(49576196772)
+
         retobj = {"status": "sucess", "loadtime" :time.time() - start}
 
         print(f'Time: {time.time() - start}')
@@ -61,17 +92,28 @@ def parse_request(req):
 def hello():
     return 'Hello Flask from alpine-linux!'
 
+@app.route('/api/fstat/cleanflickrgroup',methods=['POST'])
+def cleanflickrgroup():
+    if request.is_json:
+        payload = request.get_json(silent=True)
+        
+        d = do_manageflickrgroup()
 
-@app.route('/api/fstat/dailystats',methods=['POST'])
+        response = requests.post(payload["callbackURL"],data=d)
+        response = "all-ok"
+        return (response, 200, None)
+    
+    resp = 'Execute daily stats!'
+    return (resp, 200, None)
+
+@app.route('/api/fstat/dailystats', methods=['POST'])
 def getStatsDaily():
     if request.is_json:
         payload = request.get_json(silent=True)
         
-
-        ddemo = { "task": "fasync", "runtime": "61.5000"}
         d = do_fasync()
 
-        response = requests.post(payload["callbackURL"],data=ddemo)
+        response = requests.post(payload["callbackURL"],data=d)
         response = "all-ok"
         return (response, 200, None)
     
