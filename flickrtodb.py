@@ -24,7 +24,8 @@ class db:
 
     def connect(self, server, dbname, username, pwd):
 
-        connecting_string = 'DRIVER={ODBC Driver 17 for SQL Server};Server=%s;Database=%s;UID=%s;PWD=%s;TDS_Version=8.0;Port=1433;'
+        connecting_string = 'DRIVER={ODBC Driver 17 for SQL Server};Server=%s;Database=%s;UID=%s;PWD=%s;Port=1433;'
+        #TDS_Version=8.0;
         connecting_string = connecting_string % (server, dbname, username, pwd)
         params = parse.quote_plus(connecting_string)
 
@@ -41,19 +42,28 @@ class db:
                 start = time.time()
                 trans = self.connection.begin()
                 ### TODO replace with SP
-                query = """
-                        IF OBJECT_ID('fs.{}') IS NOT NULL 
-                        delete from fs.{} where statdate = CAST( ? AS DATE) AND userid = ?; 
-                        """.format(df.name, df.name)
+                # query = """
+                #        IF OBJECT_ID('fs.{}') IS NOT NULL 
+                #        delete from fs.{} where statdate = CAST( ? AS DATE) AND userid = ?; 
+                #        """.format(df.name, df.name)
+                #params = ( dt, userid)
+                
+                params = (df.name, dt, userid)
+                #query = f"exec [{self.schema}].[DeleteStatsForDate] @objname =?, @dt=?, @usrid =?"
+                query = f"exec [{self.schema}].[DeleteStatsForDate] @objname ='{df.name}', @dt='{dt}', @usrid ='{userid}'"
 
-                params = (dt, userid)
-                #print(query)
+                # print(query)
 
                 ### TODO schema as class property
-                res = self.connection.execute(query, params, schema=self.schema)
-                print(f'Delete statements deleted {res.rowcount} rows')
+                #res = self.connection.execute(query, params, schema=self.schema)
+                print(f"Deleting existing records in table '{df.name}' for date '{dt}' (userid '{userid}')")
+                self.connection.execute(query)
+                trans.to_sql()
+                # print(f'Delete statements deleted {res.rowcount} rows')
                 print(f'Dataframe {df.name} with {df.shape[0]} rows')
-                df.to_sql(df.name, con=self.engine, if_exists='append', chunksize=1000, schema=self.schema)
+                
+                df.to_sql(df.name, con=self.engine, if_exists='append',  schema=self.schema, chunksize=1000)
+                #chunksize=1000, index=False
 
                 new_state = lambda x: 'live' if (dt == date.today()) else 'frozen'
 
@@ -66,14 +76,17 @@ class db:
 
                 trans.commit()
 
-            except:
+            except Exception as e:
+                print(f'Exception while writing to DB:{e}')
+                
                 trans.rollback()
                 raise
             finally:
                 print(f'Time writing dataframe: {df.name}, {time.time() - start}')
 
     def terminate(self):
-        self.connection.close()
+        if self.connection is not None:
+            self.connection.close()
 
 
 class FlickrToDb:
@@ -91,25 +104,25 @@ class FlickrToDb:
         self._flickr = None
         pass
 
-    def init(self):
-        self.flickr_authenticate()
+    def init(self,force_login=False):
+        self.flickr_authenticate(force_login)
         self.sqldb.connect('tcp:woo.database.windows.net,1433', 'BYWS', 'boss', 's7#3QzOsB$J*^v3')
 
     def end(self):
         self.sqldb.terminate()
 
-    def flickr_authenticate(self):
-        self._flickr = flickrapi.FlickrAPI(self._apikey, self._secret, format='parsed-json')
+    def flickr_authenticate(self, force_login=False):
+        self._flickr = flickrapi.FlickrAPI(self._apikey, self._secret, format='parsed-json',token_cache_location='./tkcache/.flickr')
         print('Step 1: authenticate')
 
         # Only do this if we don't have a valid token already
-        if not self._flickr.token_valid(perms='read'):
+        if not self._flickr.token_valid(perms='write') or force_login:
             # Get a request token
             self._flickr.get_request_token(oauth_callback='oob')
 
             # Open a browser at the authentication URL. Do this however
             # you want, as long as the user visits that URL.
-            authorize_url = self._flickr.auth_url(perms='read')
+            authorize_url = self._flickr.auth_url(perms='write')
             print(authorize_url)
             webbrowser.open_new_tab(authorize_url)
 
@@ -495,3 +508,56 @@ class FlickrToDb:
         dlu = df_dates.loc['lastupdate'][1]
         ts = time.strftime("%a, %d %b %Y %H:%M:%S %Z", time.localtime(int(dlu)))
         return ts
+
+    def get_group(self, grpname):
+
+        grpid = ''
+        pageidx = 1
+        gl = self._flickr.groups.pools.getGroups(format='parsed-json', page=pageidx, per_page=400)
+        dfx = pd.DataFrame(gl['groups']['group'])
+        res = dfx[dfx['name'] == grpname]
+
+        if res.empty:
+            while gl['groups']['page'] < gl['groups']['pages']:
+                if not res.empty:
+                    break
+                pageidx = pageidx + 1
+                gl = self._flickr.groups.pools.getGroups(format='parsed-json', page=pageidx,per_page=400)
+                dfx = pd.DataFrame(gl['groups']['group'])
+                res = dfx[dfx['name'] == grpname]
+
+        if not res.empty:
+            grpid = res['nsid'].values[0]
+
+        return grpid
+
+    def clean_group(self, groupid, leave=25):
+
+        pageidx = 1
+        gl = self._flickr.groups.pools.getPhotos(group_id=groupid, user_id=self._userid, extras='date_upload', format='parsed-json', page=pageidx, per_page=400)
+        all_group_pics = pd.DataFrame(gl['photos']['photo'])
+
+        while gl['photos']['page'] < gl['photos']['pages']:
+            pageidx = pageidx + 1
+            gl = self._flickr.groups.pools.getPhotos(group_id=groupid, user_id=self._userid, extras='date_upload',
+                                                     format='parsed-json', page=pageidx, per_page=400)
+            all_group_pics = all_group_pics.append(pd.DataFrame(gl['photos']['photo']))
+
+
+        all_group_pics = all_group_pics.sort_values(by=['dateupload'], ascending=False)
+
+        print(f'Group has {all_group_pics.shape[0]} photos.')
+        if all_group_pics.shape[0] >= leave:
+            all_group_pics = all_group_pics.iloc[leave:]
+            print(f'Deleting {all_group_pics.shape[0]} photos.')
+
+            for row in all_group_pics['id']:
+                 #print(row)
+                self._flickr.groups.pools.remove(photo_id=int(row), group_id=groupid)
+
+            print(f'Done deleting {all_group_pics.shape[0]} photos.')
+        else:
+            print(f'Group has less than {leave} rows, nothing to do.')
+
+        return
+        

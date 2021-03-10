@@ -2,5 +2,10 @@
     "python.pythonPath": "C:\\Users\\srdja\\AppData\\Local\\Programs\\Python\\Python36\\python.exe",
     "python.venvPath": "C:\\Users\\sstojanovic8500\\Desktop\\work\\src\\fa-sync\\venv",
     "appService.defaultWebAppToDeploy": "/subscriptions/61394917-e677-4f18-8fd6-b8a05ac6a014/resourceGroups/CustEntry/providers/Microsoft.Web/sites/fa-sync",
-    "appService.deploySubpath": ""
+    "appService.deploySubpath": "",
+    "azureFunctions.deploySubpath": "bin/Release/netcoreapp3.1/publish",
+    "azureFunctions.projectLanguage": "C#",
+    "azureFunctions.projectRuntime": "~3",
+    "debug.internalConsoleOptions": "neverOpen",
+    "azureFunctions.preDeployTask": "publish"
 }
