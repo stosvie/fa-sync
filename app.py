@@ -14,6 +14,29 @@ import flickrapi as fapi
 
 app = Flask(__name__)
 
+
+def do_getallphotos():
+    api_key = u'4a69280a31fc96c26e7d218c3a8cf345'
+    api_secret = u'a2d9a639fd955497'
+    myuserid = u'58051209@N00'
+    retobj = {}
+
+    fo = f.FlickrToDb(myuserid, api_key, api_secret)
+    try:
+        start = time.time()
+
+        fo.init()
+        fo.get_user_photos_quick()
+
+    except fapi.FlickrError as err:
+        print("Flickr error {}".format(err))
+        retobj = {"status": "error", "errortxt" :err}
+        return retobj
+
+    finally:
+        fo.end()
+
+
 def do_manageflickrgroup():
     api_key = u'4a69280a31fc96c26e7d218c3a8cf345'
     api_secret = u'a2d9a639fd955497'
@@ -121,7 +144,14 @@ def getStatsDaily():
     resp = 'Execute daily stats!'
     return (resp, 200, None)
     #return 'Execute daily stats!'
-    
+
+@app.route('/api/fstat/getphotos', methods=['POST'])
+def getAllPhotos():    
+        
+    d = do_getallphotos()
+
+    response = "all-ok"
+    return (response, 200, None)
 
 
 if __name__ == '__main__':

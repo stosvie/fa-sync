@@ -399,12 +399,49 @@ class FlickrToDb:
 
         #print('retrieved all stats')
     def get_stats_batch(self):
-
-
         #print(ls)
         for dt in self.get_dates():
             self.get_all_stats(dt[0])
         #ps = self.get_photo_stats(dt[0])
+
+    def _get_photo_batch_quick(self, page_to_get):
+        start = time.time()
+
+
+        photos = self._flickr.people.getPhotos(user_id=self._userid, page=page_to_get, extras='last_update')
+        dfp = pd.DataFrame(photos['photos']['photo'])
+
+        
+        dref = datetime.date(2021,3,1)
+        unixtime = time.mktime(dref.timetuple())
+
+        fdfp = dfp.loc[dfp['lastupdate'] > '1614605939']
+
+        cur_page = photos['photos']['page']
+        tot_pages = photos['photos']['pages']
+        print(f"Starting quick-stats for page { cur_page } of { tot_pages }.")
+        
+        #i1 = self._flickr.photos.getInfo(photo_id='51025899787', format='parsed-json')
+        #print (f"todays explore updated on {i1['photo']['dates']['lastupdate']}")
+        res = dict()
+        #for f in photos['photos']['photo']:
+        for i, j in dfp.iterrows(): 
+            photoid = j['id']
+            phototitle = j['title']
+            i1 = self._flickr.photos.getInfo(photo_id=photoid, format='parsed-json')
+            faves =  self._flickr.photos.getFavorites(photo_id=photoid, per_page=50)
+            grplist = self._flickr.photos.getAllContexts(photo_id=photoid, format='parsed-json')
+            res[photoid] = {"cntfavs":faves['photo']['total'], "cntcomments":i1['photo']['comments']['_content'], "cntgroups":len(grplist['pool']), "cnttags":len(i1['photo']['tags']['tag'])}
+                
+        print(f"Done with quick batch for page { cur_page } of { tot_pages }.")
+        print(f'Time gathering quick details for page: {cur_page}, {time.time() - start}')
+        #time.sleep(1) # let, flickr breathe inbetween 
+        return cur_page,tot_pages
+
+    def get_user_photos_quick(self):
+        r = self._get_photo_batch_quick(1)
+        while r[0] < r[1]:
+            r = self._get_photo_batch_quick(r[0] + 1)
 
     ### TODO this needs to be sorted
     #        1) add groups and more 
