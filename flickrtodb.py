@@ -1,13 +1,33 @@
 import datetime
 from datetime import date, timedelta
+
 import time
 import timeit
 
 from urllib import parse
 
 import flickrapi
+import os, uuid, sys
+import os, uuid, sys
+from azure.storage.blob import _blob_service_client
+from azure.storage.blob import  BlobClient, ContainerClient, ContentSettings
+from azure.core._match_conditions import MatchConditions
+#from azure.storage.common.models import ContentSettings
+import pyarrow 
+from pyarrow import feather, parquet
+from azure.storage.blob import BlobServiceClient
+
+
 
 import pandas as pd
+
+#import findspark
+
+#findspark.init()
+#from pyspark import SparkContext
+#from pyspark import SparkConf
+
+
 # import numpy as np
 import sqlalchemy as sa
 import pyodbc
@@ -16,6 +36,112 @@ import pyodbc
 import webbrowser
 from dateutil import parser
 
+
+class azstore:
+
+    service_client = None
+
+
+
+    def upload_json(self,rawdata,fname):
+
+        CONNECT_STR = "DefaultEndpointsProtocol=https;AccountName=stosblobv2;AccountKey=4lcPBLS0bAypEaU1QFGd4QadH5WzvyL3vy3IS+gNhrij4I1dPaXcu9ATl+XdrctTQlH8/oG3qKpdy19FYg6WEg==;EndpointSuffix=core.windows.net"
+        CONTAINER_NAME = "test"
+
+        # Instantiate a ContainerClient. This is used when uploading a blob from your local file.
+        container_client = ContainerClient.from_connection_string(
+            conn_str=CONNECT_STR, 
+            container_name=CONTAINER_NAME
+        )
+        data = rawdata
+        output_blob_name = fname
+
+        #This is an optional setting for guaranteeing the MIME type to be always json.
+        content_setting = ContentSettings(
+            content_type='application/json', 
+            content_encoding=None, 
+            content_language=None, 
+            content_disposition=None, 
+            cache_control=None, 
+            content_md5=None
+        )
+
+        # Upload file
+
+        container_client.upload_blob(
+            name=output_blob_name, 
+            data=data, 
+            content_settings=content_setting)
+                
+        # Check the result
+        all_blobs = container_client.list_blobs(name_starts_with="BLOB", include=None)
+        for each in all_blobs:
+            print("RES: ", each)    
+
+    def upload_data_to_adls(self):
+        """
+        Function to upload local directory to ADLS
+        :return:
+        """
+        # Azure Storage connection string
+        connect_str = "DefaultEndpointsProtocol=https;AccountName=stosblobv2;AccountKey=4lcPBLS0bAypEaU1QFGd4QadH5WzvyL3vy3IS+gNhrij4I1dPaXcu9ATl+XdrctTQlH8/oG3qKpdy19FYg6WEg==;EndpointSuffix=core.windows.net"
+        # Name of the Azure container
+        container_name = "test"
+        # The path to be removed from the local directory path while uploading it to ADLS
+        path_to_remove = ""
+        # The local directory to upload to ADLS
+        local_path = "C:\\Users\\srdja\\Desktop\\PULA IMMO"
+        
+        blob_service_client = BlobServiceClient.from_connection_string(connect_str)
+        directory_client = BlobServiceClient.get_directory_client("test")
+        file_client = directory_client.create_file("x.json")
+        # The below code block will iteratively traverse through the files and directories under the given folder and uploads to ADLS.
+        for r, d, f in os.walk(local_path):
+            if f:
+                for file in f:
+                    file_path_on_azure = os.path.join(r, file).replace(path_to_remove, "")
+                    file_path_on_local = os.path.join(r, file)
+                    blob_client = blob_service_client.get_blob_client(container=container_name, blob=file_path_on_azure)
+                    with open(file_path_on_local, "rb") as data:
+                        blob_client.upload_blob(data)
+                        print("uploading file —->", file_path_on_local)
+                    
+
+    def init(self, storage_account_name, storage_account_key):
+
+   
+        try:  
+            global service_client
+
+            service_client = BlobServiceClient(account_url="{}://{}.dfs.core.windows.net".format(
+                "https", storage_account_name), credential=storage_account_key)
+        
+            container = blobService.get_container_client('flick-data')
+
+            for blob in container.list_blobs(name_starts_with=prefix):
+                print("\t Blob name: " + blob.name)
+
+        except Exception as e:
+            print(e)
+    
+    def upload_file_to_directory(self):
+        try:
+
+            file_system_client = self.service_client.get_file_system_client(file_system="my-file-system")
+
+            directory_client = file_system_client.get_directory_client("flickr-data")
+            
+            file_client = directory_client.create_file("uploaded-file.txt")
+            local_file = open("C:\\file-to-upload.txt",'r')
+
+            file_contents = 'sdfsfsfsfs sdfsdfsdf'
+
+            file_client.append_data(data=file_contents, offset=0, length=len(file_contents))
+
+            file_client.flush_data(len(file_contents))
+
+        except Exception as e:
+            print(e)
 
 class db:
     engine = None
@@ -142,6 +268,7 @@ class FlickrToDb:
         self.sqldb.terminate()
 
     def flickr_authenticate(self, force_login=False):
+        #parsed-json
         self._flickr = flickrapi.FlickrAPI(self._apikey, self._secret, format='parsed-json',token_cache_location='./tkcache/.flickr')
         print('Step 1: authenticate')
 
@@ -434,9 +561,23 @@ class FlickrToDb:
         df_photos = pd.DataFrame()
         dict = {}
 
-        photos = self._flickr.people.getPhotos(user_id=self._userid, page=page_to_get, extras='date_upload,last_update,date_taken,url_t')
+        photos = self._flickr.people.getPhotos(user_id=self._userid, page=page_to_get,extras='date_upload,last_update,date_taken,url_t')
         dfp = pd.DataFrame(photos['photos']['photo'])
+        photos_raw = self._flickr.people.getPhotos(user_id=self._userid, page=page_to_get, format='json',extras='date_upload,last_update,date_taken,url_t')
+        
+        #dfx = pd.read_json(photos_raw)
+        #tab = pyarrow.Table.from_pandas(dfx)
+        #buf = pyarrow.BufferOutputStream()
+        #pyarrow.parquet.write_table(tab, buf)
 
+
+        #t = dfx.to_parquet()
+        #azc = azstore()
+        #now = datetime.datetime.now()
+        #nowpart =  now.strftime('%m-%d-%Y %H:%M:%S')
+        #blob_fname =  "{}_{}_photo.json".format(
+        #        page_to_get ,nowpart)
+        #azc.upload_json(photos_raw, blob_fname)
         
         dref = datetime.date(2020,4,1)
         unixtime = time.mktime(dref.timetuple())
@@ -446,6 +587,10 @@ class FlickrToDb:
         cur_page = photos['photos']['page']
         tot_pages = photos['photos']['pages']
         print(f"Starting quick-stats for page { cur_page } of { tot_pages }.")
+        
+        
+
+        
         
         #i1 = self._flickr.photos.getInfo(photo_id='51025899787', format='parsed-json')
         #print (f"todays explore updated on {i1['photo']['dates']['lastupdate']}")
@@ -479,12 +624,24 @@ class FlickrToDb:
         dref = datetime.date(2020,1,1)
         dfp = pd.DataFrame()
         r = self._get_photo_batch_quick(1)
+        
         dfp = dfp.append(r[2])
         while r[0] < r[1]:
             r = self._get_photo_batch_quick(r[0] + 1)
             dfp = dfp.append(r[2])
         dfp.name = 'dim_photos'
-        self.sqldb.write_dfPhotos(dref, dfp, self._userid)
+        #self.sqldb.write_dfPhotos(dref, dfp, self._userid)
+        #dfx = pd.read_json(photos_raw)
+        tab = pyarrow.Table.from_pandas(dfp)
+        buf = pyarrow.BufferOutputStream()
+        parquet.write_table(tab, buf)
+        azc = azstore()
+        now = datetime.datetime.now()
+        nowpart =  now.strftime('%m-%d-%Y %H:%M:%S')
+        blob_fname =  "all_{}_photo.parquet".format(nowpart)
+        azc.upload_json(buf.getvalue().to_pybytes(), blob_fname)
+
+
 
     ### TODO this needs to be sorted
     #        1) add groups and more 
